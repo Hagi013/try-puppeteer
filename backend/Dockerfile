@@ -1,4 +1,4 @@
-FROM node:8-slim
+FROM node:10-slim
 
 LABEL maintainer="Eric Bidelman <ebidel@>"
 
@@ -26,15 +26,26 @@ RUN apt-get update && apt-get -yq upgrade && apt-get install \
 # Note: this installs the necessary libs to make the bundled version of Chromium that Puppeteer
 # installs, work.
 # https://www.ubuntuupdates.org/package/google_chrome/stable/main/base/google-chrome-unstable
-RUN apt-get update && apt-get install -y wget --no-install-recommends \
-    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list' \
-    && apt-get update \
-    && apt-get install -y google-chrome-unstable fonts-ipafont-gothic fonts-wqy-zenhei fonts-thai-tlwg fonts-kacst ttf-freefont \
-      --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get purge --auto-remove -y curl \
-    && rm -rf /src/*.deb
+#RUN apt-get update && apt-get install -y wget --no-install-recommends \
+#    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
+#    && sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list' \
+#    && apt-get update \
+#    && apt-get install -y google-chrome-unstable fonts-ipafont-gothic fonts-wqy-zenhei fonts-thai-tlwg fonts-kacst ttf-freefont \
+#      --no-install-recommends \
+#    && rm -rf /var/lib/apt/lists/* \
+#    && apt-get purge --auto-remove -y curl \
+#    && rm -rf /src/*.deb
+RUN  apt-get update \
+     # Install latest chrome dev package, which installs the necessary libs to
+     # make the bundled version of Chromium that Puppeteer installs work.
+     && apt-get install -y wget --no-install-recommends \
+     && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
+     && sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list' \
+     && apt-get update \
+     && apt-get install -y google-chrome-unstable --no-install-recommends \
+     && rm -rf /var/lib/apt/lists/* \
+     && wget --quiet https://raw.githubusercontent.com/vishnubob/wait-for-it/master/wait-for-it.sh -O /usr/sbin/wait-for-it.sh \
+     && chmod +x /usr/sbin/wait-for-it.sh
 
 ADD https://github.com/Yelp/dumb-init/releases/download/v1.2.1/dumb-init_1.2.1_amd64 /usr/local/bin/dumb-init
 RUN chmod +x /usr/local/bin/dumb-init
@@ -44,7 +55,7 @@ COPY . /app/
 WORKDIR app
 
 # Install deps for server.
-RUN yarn
+RUN npm i
 
 # Uncomment to skip the chromium download when installing puppeteer.
 # ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD true
@@ -53,7 +64,7 @@ RUN yarn
 # server.js. Cache bust so we always get the latest version of puppeteer when
 # building the image.
 ARG CACHEBUST=1
-RUN yarn add puppeteer
+RUN npm i puppeteer
 
 # Add pptr user.
 RUN groupadd -r pptruser && useradd -r -g pptruser -G audio,video pptruser \
@@ -67,4 +78,4 @@ USER pptruser
 EXPOSE 8080
 
 ENTRYPOINT ["dumb-init", "--"]
-CMD ["yarn", "start"]
+CMD ["npm", "start"]
