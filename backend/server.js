@@ -4,9 +4,10 @@ const fs = require('fs');
 const express = require('express');
 // const {spawn} = require('child_process');
 const mime = require('mime');
-const upload = require('multer')();
-const {VM} = require('vm2');
+// const upload = require('multer')();
+const { VM } = require('vm2');
 const puppeteer = require('puppeteer');
+const bodyParser = require('body-parser');
 
 const REUSE_CHROME = false;
 
@@ -110,7 +111,7 @@ async function runCodeInSandbox(code, browser = null) {
     // Rewrite user code to reconnect to Chrome that is already running instead
     // of launching a new browser instance every run.
     code = code.replace(/\.launch\([\w\W]*?\)/g,
-        `.connect({browserWSEndpoint: "${browserWSEndpoint}"})`);
+      `.connect({browserWSEndpoint: "${browserWSEndpoint}"})`);
 
     // Replace user code that closes the browser.
     code = code.replace(/(.*\.close\(\))/g, '// $1');
@@ -120,7 +121,7 @@ async function runCodeInSandbox(code, browser = null) {
     // TODO: figure out why this is needed now. User in docker image was
     // enough before. Possible GAE changed permissions.
     code = code.replace(/\.launch\([\w\W]*?\)/g,
-        ".launch({args: ['--no-sandbox', '--disable-dev-shm-usage']})");
+      `.launch({args: ['--no-sandbox', '--disable-dev-shm-usage']})`);
   }
 
   code = `
@@ -274,30 +275,38 @@ app.get('/cleanup', catchAsyncErrors(async (req, res, next) => {
   res.status(200).send('All pages closed');
 }));
 
-app.post('/run', upload.single('file'), catchAsyncErrors(async (req, res, next) => {
-  const browser = app.locals.browser;
-  const code = req.file.buffer.toString();
-
-  // Only add listener once per process.
-  if (!unhandledRejectionHandlerAdded) {
-    process.on('unhandledRejection', err => {
-      console.error('unhandledRejection');
-      next(err, req, res, next);
-    });
-    unhandledRejectionHandlerAdded = true;
-  }
-
+app.use(errorHandler);
+app.use(bodyParser.urlencoded({
+  extended: true
+}));
+app.use(bodyParser.json());
+app.post('/run', async function(req, res, next) {
   try {
-    const result = await runCodeInSandbox(code, browser); // await runCodeUsingSpawn(code);
-    if (!res.headersSent) {
-      res.status(200).send(result);
+    const browser = app.locals.browser;
+    console.log('req', req.body);
+    const { code } = req.body;
+
+    // Only add listener once per process.
+    if (!unhandledRejectionHandlerAdded) {
+      process.on('unhandledRejection', err => {
+        console.error('unhandledRejection');
+        next(err, req, res, next);
+      });
+      unhandledRejectionHandlerAdded = true;
+    }
+
+    try {
+      const result = await runCodeInSandbox(code, browser); // await runCodeUsingSpawn(code);
+      if (!res.headersSent) {
+        res.status(200).send(result);
+      }
+    } catch (err) {
+      throw err;
     }
   } catch (err) {
-    throw err;
+    res.status(500).send({errors: `Error running your code. ${err}`});
   }
-}));
-
-app.use(errorHandler);
+});
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
